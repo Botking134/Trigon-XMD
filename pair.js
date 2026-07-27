@@ -116,7 +116,7 @@ export async function startPairing() {
 ==================================================
 `);
 
-            // Send random dark connection message to Master
+            // Send random dark connection message to Master in settings.js
             const masterJid = `${settings.masterNumber.replace(/[^0-9]/g, '')}@s.whatsapp.net`;
             const randomMessage = darkMessages[Math.floor(Math.random() * darkMessages.length)];
 
