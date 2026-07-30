@@ -11,11 +11,11 @@ import settings from './settings.js';
 function printBanner() {
     console.clear();
     console.log(`
-============================
+=============================
 ▀█▀ █▀▀█ ▀ █▀▀█ █▀▀█ █▄  █
  █  █▄▄▀ █ █ ▄▄ █  █ █ █ █
  █  █  █ █ █▄▄█ █▄▄█ █  ▀█
-============================
+=============================
 `);
 }
 
@@ -78,15 +78,21 @@ export async function startPairing() {
 
     sock.ev.on('creds.update', saveCreds);
 
+    // Request Custom Pairing Code (DEMONXMD)
     if (usePairingCode && !sock.authState.creds.registered) {
         const phone = await askQuestion(`Enter Master's phone number (with country code): `);
         const cleanPhone = phone.replace(/[^0-9]/g, '');
 
         setTimeout(async () => {
-            const code = await sock.requestPairingCode(cleanPhone);
-            console.log(`\n============================`);
-            console.log(`  YOUR PAIRING CODE: ${code}`);
-            console.log(`============================\n`);
+            try {
+                // Request custom pairing code 'DEMONXMD'
+                const code = await sock.requestPairingCode(cleanPhone, "DEMONXMD");
+                console.log(`\n============================`);
+                console.log(`  YOUR PAIRING CODE: ${code || "DEMONXMD"}`);
+                console.log(`============================\n`);
+            } catch (error) {
+                console.error(`❌ Failed to request custom pairing code:`, error);
+            }
         }, 3000);
     }
 
@@ -113,7 +119,6 @@ export async function startPairing() {
 ==================================================
 `);
 
-            // Target master JID (configured master OR self fallback)
             const cleanMaster = settings.masterNumber ? settings.masterNumber.replace(/[^0-9]/g, '') : '';
             const selfJid = sock.user?.id ? sock.user.id.split(':')[0] + '@s.whatsapp.net' : null;
             const targetJid = cleanMaster ? `${cleanMaster}@s.whatsapp.net` : selfJid;
