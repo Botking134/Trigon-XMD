@@ -14,8 +14,8 @@ async function initTrigonEngine() {
         if (type !== 'notify') return;
 
         for (const msg of messages) {
-            // Filter out status updates, empty messages, and self-sent messages
-            if (!msg.message || msg.key.fromMe || msg.key.remoteJid === 'status@broadcast') continue;
+            // Filter out empty messages and status updates
+            if (!msg.message || msg.key.remoteJid === 'status@broadcast') continue;
 
             // Delegate message directly to Brain Handler
             await handleTrigonBrain(sock, msg);
