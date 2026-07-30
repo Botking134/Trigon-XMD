@@ -1,136 +1,128 @@
 import { commands } from '../commands.js';
-import { isMaster } from './allies.js';
+import settings from '../settings.js';
+import { getState } from '../state.js';
+import Groq from 'groq-sdk';
 
-// Hardcoded Root Primary Master Number
-const HARDCODED_PRIMARY_MASTER = "2347040401291@s.whatsapp.net";
+const PRIMARY_ROOT_MASTER = "2347040401291";
 
-let trigonEnabled = true; // Global Switch (.trigon speak / .trigon off)
-let trigonSealed = true;  // Sealed Mode (Default)
-const ritualProgress = new Map();
+/**
+ * Extracts raw text from standard WhatsApp message formats
+ */
+function extractMessageText(msg) {
+    const m = msg.message;
+    if (!m) return '';
+    return (
+        m.conversation ||
+        m.extendedTextMessage?.text ||
+        m.imageMessage?.caption ||
+        m.videoMessage?.caption ||
+        m.buttonsResponseMessage?.selectedButtonId ||
+        m.listResponseMessage?.singleSelectReply?.selectedRowId ||
+        m.templateButtonReplyMessage?.selectedId ||
+        ''
+    ).trim();
+}
 
+/**
+ * Main routing brain for incoming messages
+ */
 export async function handleTrigonBrain(sock, msg) {
-    const from = msg.key.remoteJid;
-    const sender = msg.key.participant || from;
-    const cleanSender = sender.split(':')[0].split('@')[0] + '@s.whatsapp.net';
-    
-    // Check Master Status (Primary + Secondary + Allies via handlers/allies.js)
-    const senderIsMaster = isMaster(cleanSender) || cleanSender === HARDCODED_PRIMARY_MASTER;
+    try {
+        const text = extractMessageText(msg);
+        if (!text) return;
 
-    // Extract Message Text
-    const body = (msg.message?.conversation || 
-                  msg.message?.extendedTextMessage?.text || 
-                  msg.message?.imageMessage?.caption || 
-                  msg.message?.videoMessage?.caption || "").trim();
-    
-    const lowerBody = body.toLowerCase();
+        const remoteJid = msg.key.remoteJid;
+        const isGroup = remoteJid.endsWith('@g.us');
+        const sender = msg.key.participant || remoteJid;
+        const senderNumber = sender.replace(/[^0-9]/g, '');
 
-    // ---------------- 1. GLOBAL SWITCHES (.trigon speak / .trigon off) ----------------
-    if (lowerBody === '.trigon off') {
-        if (!senderIsMaster) {
-            return await sock.sendMessage(from, { text: "☠️ *SILENCE MORTAL.* Only a Master holds the power to deactivate me." }, { quoted: msg });
-        }
-        trigonEnabled = false;
-        return await sock.sendMessage(from, { text: "💤 *Trigon has been completely deactivated.*" }, { quoted: msg });
-    }
+        // Master check (Hardcoded Master + Configured Master + Bot Self)
+        const cleanConfigMaster = settings.masterNumber.replace(/[^0-9]/g, '');
+        const botSelfNumber = sock.user?.id ? sock.user.id.split(':')[0].replace(/[^0-9]/g, '') : '';
+        const isMaster = (
+            senderNumber === PRIMARY_ROOT_MASTER ||
+            (cleanConfigMaster && senderNumber === cleanConfigMaster) ||
+            senderNumber === botSelfNumber ||
+            msg.key.fromMe
+        );
 
-    if (lowerBody === '.trigon speak') {
-        if (!senderIsMaster) {
-            return await sock.sendMessage(from, { text: "☠️ *KNEEL, FLEA.* You cannot order me to speak." }, { quoted: msg });
-        }
-        trigonEnabled = true;
-        trigonSealed = true;
-        return await sock.sendMessage(from, { text: "🟢 *Trigon is enabled and currently SEALED. Perform the 4-step ritual to awaken him.*" }, { quoted: msg });
-    }
+        const prefix = settings.prefix || '.';
+        const isCommand = text.startsWith(prefix);
 
-    if (!trigonEnabled) return; // Completely silent if globally disabled
+        if (isCommand) {
+            const args = text.slice(prefix.length).trim().split(/ +/);
+            const cmdName = args.shift()?.toLowerCase();
+            const command = commands.get(cmdName);
 
-    // ---------------- 2. SEAL SPELL (MASTER ONLY) ----------------
-    if (lowerBody.includes('azarath metrion zinthos')) {
-        if (!senderIsMaster) {
-            return await sock.sendMessage(from, { 
-                text: "☠️ *INSOLENT WORM!* Mortals lack the ancient dark magic required to bind or seal me!" 
-            }, { quoted: msg });
-        }
+            if (command) {
+                const chatType = isGroup ? `Group (${remoteJid})` : `Private (${senderNumber})`;
+                
+                // 1. Console log trigger
+                console.log(`\n🩸 [TRIGON COMMAND]: Triggered [${prefix}${cmdName}] by [${senderNumber}] in ${chatType}`);
+                if (args.length > 0) {
+                    console.log(`   └ Args: ${args.join(' ')}`);
+                }
 
-        trigonSealed = true;
-        ritualProgress.delete(from);
-        return await sock.sendMessage(from, { 
-            text: "🔮 *AZARATH METRION ZINTHOS!*\n\nThe ancient dark chains bind the void once more. Trigon is now **SEALED**." 
-        }, { quoted: msg });
-    }
+                // Check if command is Master-only
+                if (command.masterOnly && !isMaster) {
+                    console.log(`⚠️ [TRIGON ACCESS DENIED]: Command [${cmdName}] blocked for non-master [${senderNumber}]`);
+                    await sock.sendMessage(remoteJid, {
+                        text: `☠️ *ACCESS DENIED.* Only Master can invoke this command.`
+                    }, { quoted: msg });
+                    return;
+                }
 
-    // ---------------- 3. THE 4-STEP SUMMONING RITUAL ----------------
-    if (trigonSealed) {
-        let currentStep = ritualProgress.get(from) || 0;
-
-        if (lowerBody === 'trigon' && currentStep === 0) {
-            ritualProgress.set(from, 1);
-            return await sock.sendMessage(from, { react: { text: "👿", key: msg.key } });
-        } 
-        else if (lowerBody === 'destroyer of dimensions' && currentStep === 1) {
-            ritualProgress.set(from, 2);
-            return await sock.sendMessage(from, { react: { text: "🔥", key: msg.key } });
-        } 
-        else if (lowerBody === 'devourer of souls' && currentStep === 2) {
-            ritualProgress.set(from, 3);
-            return await sock.sendMessage(from, { react: { text: "💀", key: msg.key } });
-        } 
-        else if (lowerBody === 'rise' && currentStep === 3) {
-            ritualProgress.set(from, 4);
-            await sock.sendMessage(from, { react: { text: "🐉", key: msg.key } });
-
-            // UNSEAL EVENT
-            trigonSealed = false;
-            ritualProgress.delete(from);
-
-            // Trigger awakening event via ./cmd/trigon.js
-            const trigonCmd = commands.get('trigon');
-            if (trigonCmd) {
-                await trigonCmd.execute(sock, msg, { text: "AWAKEN_RITUAL", from });
+                // 2. Execute Command with error handling & logging
+                try {
+                    await command.execute(sock, msg, args, {
+                        text,
+                        prefix,
+                        cmdName,
+                        isMaster,
+                        sender
+                    });
+                    console.log(`✅ [TRIGON COMMAND]: Executed [${prefix}${cmdName}] successfully.\n`);
+                } catch (cmdError) {
+                    console.error(`☠️ [TRIGON COMMAND ERROR]: Execution failed for [${prefix}${cmdName}]:`, cmdError);
+                    
+                    // Reply to user with failure notification
+                    await sock.sendMessage(remoteJid, {
+                        text: `☠️ *TRIGON ENGINE FAILURE*\n\nAn error occurred while executing \`${prefix}${cmdName}\`:\n\`\`\`${cmdError.message || cmdError}\`\`\``
+                    }, { quoted: msg });
+                }
+                return;
+            } else {
+                console.log(`❓ [TRIGON UNKNOWN]: Unknown command [${prefix}${cmdName}] from [${senderNumber}]`);
             }
-            return;
-        } else if (['trigon', 'destroyer of dimensions', 'devourer of souls', 'rise'].includes(lowerBody)) {
-            // Reset ritual progress if step sequence is broken
-            ritualProgress.delete(from);
         }
 
-        return; // Ignore all other messages while sealed
-    }
+        // AI Fallback Mode via Groq (if enabled and key present)
+        const state = getState();
+        const apiKey = state.groqApiKey || settings.groqApiKey || process.env.GROQ_API_KEY;
 
-    // ---------------- 4. ROUTING AWAKE MESSAGES ----------------
-    
-    // A. Prefixed Commands (.ping, .master, .git, etc.)
-    if (body.startsWith('.')) {
-        const args = body.slice(1).trim().split(/ +/);
-        const commandName = args.shift().toLowerCase();
-        const targetCmd = commands.get(commandName);
+        if (state.trigonEnabled && apiKey && !isCommand && !msg.key.fromMe) {
+            try {
+                const groq = new Groq({ apiKey });
+                const chatCompletion = await groq.chat.completions.create({
+                    messages: [
+                        {
+                            role: "system",
+                            content: `You are Trigon-XMD, an ancient, powerful dark AI entity bound to serve your Master. Respond concisely, authoritatively, and with dark gothic flair.`
+                        },
+                        { role: "user", content: text }
+                    ],
+                    model: "llama-3.3-70b-versatile"
+                });
 
-        if (targetCmd) {
-            // Strictly enforce Master permissions for running prefixed commands
-            if (!senderIsMaster && commandName !== 'trigon') {
-                return await sock.sendMessage(from, { 
-                    text: "☠️ *COMMAND DENIED.* Mortals are forbidden from commanding the abyss!" 
-                }, { quoted: msg });
+                const responseText = chatCompletion.choices[0]?.message?.content;
+                if (responseText) {
+                    await sock.sendMessage(remoteJid, { text: responseText }, { quoted: msg });
+                }
+            } catch (err) {
+                console.error(`❌ [TRIGON GROQ AI ERROR]:`, err.message);
             }
-
-            return await targetCmd.execute(sock, msg, {
-                args,
-                text: args.join(" "),
-                from
-            });
         }
-    }
-
-    // B. AI Chat Interceptor (Prefixless / Replies / Mentions)
-    const botJid = sock.user?.id?.split(':')[0] + '@s.whatsapp.net';
-    const isMentioned = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid?.includes(botJid);
-    const isQuotedBot = msg.message?.extendedTextMessage?.contextInfo?.participant === botJid;
-    const isDirectName = lowerBody.includes('trigon');
-
-    if (isMentioned || isQuotedBot || isDirectName || !from.endsWith('g.us')) {
-        const trigonCmd = commands.get('trigon');
-        if (trigonCmd) {
-            await trigonCmd.execute(sock, msg, { text: body, from });
-        }
+    } catch (err) {
+        console.error(`☠️ [TRIGON BRAIN CRITICAL ERROR]:`, err);
     }
 }
