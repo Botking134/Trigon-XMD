@@ -11,11 +11,11 @@ import settings from './settings.js';
 function printBanner() {
     console.clear();
     console.log(`
-======================
-  ▀█▀ █▀▀█ ▀ █▀▀█ █▀▀█ █▄  █
-   █  █▄▄▀ █ █ ▄▄ █  █ █ █ █
-   █  █  █ █ █▄▄█ █▄▄█ █  ▀█
-======================
+============================
+▀█▀ █▀▀█ ▀ █▀▀█ █▀▀█ █▄  █
+ █  █▄▄▀ █ █ ▄▄ █  █ █ █ █
+ █  █  █ █ █▄▄█ █▄▄█ █  ▀█
+============================
 `);
 }
 
@@ -51,7 +51,6 @@ export async function startPairing() {
 
     let usePairingCode = false;
 
-    // Prompt for connection method if session does NOT exist
     if (!state.creds.registered) {
         console.log(`How would you like to sell your soul to me:`);
         console.log(`1. Pair with your futile soul`);
@@ -74,12 +73,11 @@ export async function startPairing() {
         logger: pino({ level: 'silent' }),
         printQRInTerminal: !usePairingCode,
         auth: state,
-        browser: ["Trigon-XMD", "Safari", "1.0.0"]
+        browser: ["Ubuntu", "Chrome", "20.0.04"]
     });
 
     sock.ev.on('creds.update', saveCreds);
 
-    // Request Pairing Code if Option 1 selected
     if (usePairingCode && !sock.authState.creds.registered) {
         const phone = await askQuestion(`Enter Master's phone number (with country code): `);
         const cleanPhone = phone.replace(/[^0-9]/g, '');
@@ -92,7 +90,6 @@ export async function startPairing() {
         }, 3000);
     }
 
-    // Handle Connection Lifecycle
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect } = update;
 
@@ -116,15 +113,20 @@ export async function startPairing() {
 ==================================================
 `);
 
-            // Send random dark connection message to Master in settings.js
-            const masterJid = `${settings.masterNumber.replace(/[^0-9]/g, '')}@s.whatsapp.net`;
-            const randomMessage = darkMessages[Math.floor(Math.random() * darkMessages.length)];
+            // Target master JID (configured master OR self fallback)
+            const cleanMaster = settings.masterNumber ? settings.masterNumber.replace(/[^0-9]/g, '') : '';
+            const selfJid = sock.user?.id ? sock.user.id.split(':')[0] + '@s.whatsapp.net' : null;
+            const targetJid = cleanMaster ? `${cleanMaster}@s.whatsapp.net` : selfJid;
 
-            try {
-                await sock.sendMessage(masterJid, { text: randomMessage });
-                console.log(`🩸 Pact confirmation dispatched to Master (${settings.masterNumber})`);
-            } catch (err) {
-                console.error(`❌ Failed to send message to Master:`, err);
+            if (targetJid) {
+                const randomMessage = darkMessages[Math.floor(Math.random() * darkMessages.length)];
+
+                try {
+                    await sock.sendMessage(targetJid, { text: randomMessage });
+                    console.log(`🩸 Pact confirmation dispatched to (${targetJid})`);
+                } catch (err) {
+                    console.error(`❌ Failed to send message to Master:`, err);
+                }
             }
         }
     });
