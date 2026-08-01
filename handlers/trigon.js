@@ -1,3 +1,5 @@
+// handlers/trigon.js
+
 import { commands } from '../commands.js';
 import settings from '../settings.js';
 import { getState } from '../state.js';
@@ -6,10 +8,24 @@ import Groq from 'groq-sdk';
 const PRIMARY_ROOT_MASTER = "2347040401291";
 
 /**
+ * Unwraps nested message objects (ephemeral, viewOnce, etc.)
+ */
+function unwrapMessage(msg) {
+    if (!msg) return null;
+    let m = msg.message || msg;
+
+    if (m?.ephemeralMessage) m = m.ephemeralMessage.message;
+    if (m?.viewOnceMessage) m = m.viewOnceMessage.message;
+    if (m?.viewOnceMessageV2) m = m.viewOnceMessageV2.message;
+
+    return m;
+}
+
+/**
  * Extracts raw text from standard WhatsApp message formats
  */
 function extractMessageText(msg) {
-    const m = msg.message;
+    const m = unwrapMessage(msg);
     if (!m) return '';
     return (
         m.conversation ||
@@ -54,9 +70,9 @@ export async function handleTrigonBrain(sock, msg) {
             const cmdName = args.shift()?.toLowerCase();
             const command = commands.get(cmdName);
 
+            const chatType = isGroup ? `Group (${remoteJid})` : `Private (${senderNumber})`;
+
             if (command) {
-                const chatType = isGroup ? `Group (${remoteJid})` : `Private (${senderNumber})`;
-                
                 // 1. Console log trigger
                 console.log(`\n🩸 [TRIGON COMMAND]: Triggered [${prefix}${cmdName}] by [${senderNumber}] in ${chatType}`);
                 if (args.length > 0) {
@@ -72,7 +88,7 @@ export async function handleTrigonBrain(sock, msg) {
                     return;
                 }
 
-                // 2. Execute Command with error handling & logging
+                // 2. Execute Command
                 try {
                     await command.execute(sock, msg, args, {
                         text,
@@ -84,15 +100,13 @@ export async function handleTrigonBrain(sock, msg) {
                     console.log(`✅ [TRIGON COMMAND]: Executed [${prefix}${cmdName}] successfully.\n`);
                 } catch (cmdError) {
                     console.error(`☠️ [TRIGON COMMAND ERROR]: Execution failed for [${prefix}${cmdName}]:`, cmdError);
-                    
-                    // Reply to user with failure notification
                     await sock.sendMessage(remoteJid, {
                         text: `☠️ *TRIGON ENGINE FAILURE*\n\nAn error occurred while executing \`${prefix}${cmdName}\`:\n\`\`\`${cmdError.message || cmdError}\`\`\``
                     }, { quoted: msg });
                 }
                 return;
             } else {
-                console.log(`❓ [TRIGON UNKNOWN]: Unknown command [${prefix}${cmdName}] from [${senderNumber}]`);
+                console.log(`❓ [TRIGON UNKNOWN]: Triggered unknown command [${prefix}${cmdName}] by [${senderNumber}] in ${chatType}`);
             }
         }
 
