@@ -1,6 +1,8 @@
+// commands.js
+
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,7 +17,6 @@ export async function loadCommands() {
     commands.clear();
     const cmdDir = path.join(__dirname, 'cmd');
 
-    // Create /cmd folder if it doesn't exist
     if (!fs.existsSync(cmdDir)) {
         fs.mkdirSync(cmdDir, { recursive: true });
     }
@@ -24,15 +25,14 @@ export async function loadCommands() {
 
     for (const file of files) {
         try {
-            // Anti-cache query for dynamic reloading
-            const modulePath = `./cmd/${file}?update=${Date.now()}`;
-            const commandModule = await import(modulePath);
+            const filePath = path.join(cmdDir, file);
+            const fileUrl = `${pathToFileURL(filePath).href}?update=${Date.now()}`;
+            const commandModule = await import(fileUrl);
             const command = commandModule.default;
 
             if (command?.name) {
                 commands.set(command.name.toLowerCase(), command);
 
-                // Register aliases if defined
                 if (command.aliases && Array.isArray(command.aliases)) {
                     command.aliases.forEach(alias => {
                         commands.set(alias.toLowerCase(), command);
