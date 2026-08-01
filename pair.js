@@ -1,3 +1,5 @@
+// pair.js
+
 import makeWASocket, {
     useMultiFileAuthState,
     DisconnectReason,
@@ -11,11 +13,11 @@ import settings from './settings.js';
 function printBanner() {
     console.clear();
     console.log(`
-=============================
-▀█▀ █▀▀█ ▀ █▀▀█ █▀▀█ █▄  █
- █  █▄▄▀ █ █ ▄▄ █  █ █ █ █
- █  █  █ █ █▄▄█ █▄▄█ █  ▀█
-=============================
+======================
+  ▀█▀ █▀▀█ ▀ █▀▀█ █▀▀█ █▄  █
+   █  █▄▄▀ █ █ ▄▄ █  █ █ █ █
+   █  █  █ █ █▄▄█ █▄▄█ █  ▀█
+======================
 `);
 }
 
@@ -78,14 +80,12 @@ export async function startPairing() {
 
     sock.ev.on('creds.update', saveCreds);
 
-    // Request Custom Pairing Code (DEMONXMD)
     if (usePairingCode && !sock.authState.creds.registered) {
         const phone = await askQuestion(`Enter Master's phone number (with country code): `);
         const cleanPhone = phone.replace(/[^0-9]/g, '');
 
         setTimeout(async () => {
             try {
-                // Request custom pairing code 'DEMONXMD'
                 const code = await sock.requestPairingCode(cleanPhone, "DEMONXMD");
                 console.log(`\n============================`);
                 console.log(`  YOUR PAIRING CODE: ${code || "DEMONXMD"}`);
