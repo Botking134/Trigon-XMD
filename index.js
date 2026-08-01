@@ -1,3 +1,5 @@
+// index.js
+
 import { startPairing } from './pair.js';
 import { handleTrigonBrain } from './handlers/trigon.js';
 import { loadCommands } from './commands.js';
@@ -11,7 +13,8 @@ async function initTrigonEngine() {
 
     // 3. Route incoming WhatsApp messages to handlers/trigon.js
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
-        if (type !== 'notify') return;
+        // Accept both 'notify' (other users) and 'append' (self-sent messages)
+        if (type !== 'notify' && type !== 'append') return;
 
         for (const msg of messages) {
             // Filter out empty messages and status updates
